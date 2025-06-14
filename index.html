@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Super Goku World</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #000;
+            color: #FFF;
+            font-family: 'Press Start 2P', cursive;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 75vh;
+        }
+        canvas {
+            border: 4px solid #444;
+            image-rendering: pixelated;
+            width: 100%;
+            height: 100%;
+        }
+        .ui {
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            font-size: 20px;
+            text-shadow: 2px 2px #000;
+            display: flex;
+            justify-content: space-between;
+            width: calc(100% - 40px);
+        }
+        #modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            text-align: center;
+            border: 4px solid #FFF;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #modal h1 {
+            font-size: 28px;
+            color: #f97316;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        #modal button {
+            background-color: #16a34a;
+            border: 2px solid #FFF;
+            color: white;
+            padding: 10px 20px;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .touch-controls {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            opacity: 0.6;
+        }
+        .touch-controls .d-pad { display: flex; gap: 10px; }
+        .touch-controls button {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 2px solid white;
+            background: #333;
+            color: white;
+            font-size: 28px;
+            line-height: 70px;
+        }
+         @media (pointer: coarse) and (max-width: 800px) {
+            .touch-controls {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="ui">
+            <div>SCORE<br><span id="score">0</span></div>
+            <div>ESFERAS<br><span id="dragonballs">0</span>/7</div>
+            <div>MUNDO<br><span id="world">1-1</span></div>
+        </div>
+        <div id="modal">
+            <h1 id="modal-title">SUPER GOKU WORLD</h1>
+            <p class="text-sm mt-2 mb-4 text-gray-400">Uma criação de Marcelo Brendon</p>
+            <p id="modal-text">Colete as Esferas do Dragão!</p>
+            <button id="start-button">START</button>
+        </div>
+    </div>
+    
+    <div class="touch-controls">
+        <div class="d-pad">
+            <button id="touch-left">◄</button>
+            <button id="touch-right">►</button>
+        </div>
+        <button id="touch-jump" style="background: #2563eb;">A</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const aspectRatio = 800 / 600;
+            const newWidth = container.clientWidth;
+            const newHeight = container.clientHeight;
+            if (newWidth / newHeight > aspectRatio) {
+                canvas.style.height = `${newHeight}px`;
+                canvas.style.width = `${newHeight * aspectRatio}px`;
+            } else {
+                canvas.style.width = `${newWidth}px`;
+                canvas.style.height = `${newWidth / aspectRatio}px`;
+            }
+            canvas.width = 800;
+            canvas.height = 600;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // --- UI Elements ---
+        const scoreEl = document.getElementById('score');
+        const dragonballsEl = document.getElementById('dragonballs');
+        const worldEl = document.getElementById('world');
+        const modal = document.getElementById('modal');
+        const modalTitleEl = document.getElementById('modal-title');
+        const modalTextEl = document.getElementById('modal-text');
+        const startButton = document.getElementById('start-button');
+
+        // --- Game State ---
+        let score, dragonballsCollected, gameOver, gameRunning, cameraX;
+        let currentLevelIndex = 0;
+        let nextAction = 'start_game';
+        
+        // --- World & Player ---
+        const gravity = 0.7;
+        const groundY = 520;
+        let player;
+        const enemies = [], dragonballs = [], platforms = [];
+
+        // --- Controls ---
+        const keys = {};
+        
+        // --- Drawing Functions ---
+        function drawGoku(p) { ctx.save(); ctx.translate(p.x, p.y); if (p.direction === -1) { ctx.scale(-1, 1); ctx.translate(-p.width, 0); } ctx.fillStyle = '#1e3a8a'; ctx.fillRect(5, 40, 12, 10); ctx.fillRect(23, 40, 12, 10); ctx.fillStyle = '#f97316'; ctx.fillRect(0, 25, 40, 15); ctx.fillStyle = '#1d4ed8'; ctx.fillRect(0, 12, 40, 13); ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(20, 20); ctx.lineTo(40, 12); ctx.lineTo(35, 25); ctx.lineTo(5, 25); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#fcd34d'; ctx.beginPath(); ctx.arc(20, 7, 12, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(5, -15); ctx.lineTo(20, -5); ctx.lineTo(20, -20); ctx.lineTo(35, -15); ctx.lineTo(40, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+        function drawSaibaman(e) { ctx.fillStyle = '#16a34a'; ctx.fillRect(e.x, e.y + 10, 30, 30); ctx.beginPath(); ctx.arc(e.x + 15, e.y + 5, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(e.x + 15, e.y + 5, 5, 0, Math.PI * 2); ctx.fill(); }
+        function drawDragonball(d) { ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(d.x + 15, d.y + 15, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#dc2626'; ctx.font = "bold 18px 'Press Start 2P'"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("★", d.x + 15, d.y + 15); }
+        function drawGoal(g) { ctx.fillStyle = '#94a3b8'; ctx.fillRect(g.x, g.y, 10, 150); ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(g.x + 5, g.y - 30, 40, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#64748b'; ctx.fillRect(g.x-35, g.y-10, 80, 20); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(g.x+5, g.y-30, 20, 0, Math.PI*2); ctx.fill(); }
+
+        function drawPlatform(p, theme) {
+            let topColor, bottomColor;
+            switch(theme) {
+                case 'ice':
+                    topColor = '#ffffff'; bottomColor = '#60a5fa';
+                    ctx.fillStyle = bottomColor;
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                    ctx.fillStyle = topColor;
+                    ctx.fillRect(p.x, p.y, p.width, 15);
+                    break;
+                case 'namek':
+                    topColor = '#4ade80'; bottomColor = '#166534';
+                    ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20);
+                    ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20);
+                    break;
+                default:
+                    topColor = '#fde047'; bottomColor = '#ca8a04';
+                    ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20);
+                    ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20);
+                    break;
+            }
+        }
+
+        function drawBackground() {
+            const levelTheme = levels[currentLevelIndex].theme;
+            let skyGradient;
+            switch(levelTheme) {
+                case 'ice':
+                    skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    skyGradient.addColorStop(0, '#4f46e5'); skyGradient.addColorStop(1, '#a5b4fc');
+                    break;
+                case 'namek':
+                     skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    skyGradient.addColorStop(0, '#065f46'); skyGradient.addColorStop(1, '#34d399');
+                    break;
+                default:
+                    skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    skyGradient.addColorStop(0, '#2563eb'); skyGradient.addColorStop(1, '#60a5fa');
+                    break;
+            }
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const mountainX = -cameraX * 0.2;
+            let mountainColor;
+            switch(levelTheme) {
+                case 'ice': mountainColor = '#ffffff'; break;
+                case 'namek': mountainColor = '#166534'; break;
+                default: mountainColor = '#3b82f6'; break;
+            }
+            ctx.fillStyle = mountainColor;
+            ctx.beginPath();
+            ctx.moveTo(mountainX - 100, 450);
+            ctx.lineTo(mountainX + 150, 150); ctx.lineTo(mountainX + 400, 450);
+            ctx.moveTo(mountainX + 300, 450);
+            ctx.lineTo(mountainX + 500, 100); ctx.lineTo(mountainX + 700, 450);
+            ctx.moveTo(mountainX + 800, 450);
+            ctx.lineTo(mountainX + 1000, 200); ctx.lineTo(mountainX + 1200, 450);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function update() {
+            if (gameOver) return;
+            
+            player.dy += gravity;
+            player.y += player.dy;
+            player.onGround = false;
+
+            if (keys['ArrowLeft'] || keys['a']) { player.dx = -player.speed; player.direction = -1; } 
+            else if (keys['ArrowRight'] || keys['d']) { player.dx = player.speed; player.direction = 1; }
+            else { player.dx = 0; }
+            
+            player.x += player.dx;
+            
+            if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && player.canJump) { player.dy = player.jumpPower; player.canJump = false; }
+
+            platforms.forEach(p => {
+                if (player.x + player.width > p.x && player.x < p.x + p.width &&
+                    player.y + player.height >= p.y && (player.y + player.height - player.dy) <= p.y + 1) {
+                    player.y = p.y - player.height;
+                    player.dy = 0;
+                    player.onGround = true;
+                    player.canJump = true;
+                }
+            });
+
+            enemies.forEach((e, enemyIndex) => {
+                e.x += e.dx;
+                if (e.x < e.startX || e.x + e.width > e.startX + e.range) e.dx *= -1;
+                
+                if (player.x < e.x + e.width && player.x + player.width > e.x && player.y < e.y + e.height && player.y + player.height > e.y) {
+                    if (player.dy > 0 && (player.y + player.height - player.dy) <= e.y) {
+                        enemies.splice(enemyIndex, 1);
+                        score += 100;
+                        player.dy = -10;
+                    } else {
+                        endGame();
+                    }
+                }
+            });
+            
+            dragonballs.forEach((d, i) => {
+                if (player.x < d.x + 30 && player.x + player.width > d.x && player.y < d.y + 30 && player.y + player.height > d.y) {
+                    dragonballs.splice(i, 1);
+                    dragonballsCollected++;
+                    score += 500;
+                }
+            });
+
+            if (player.x > levels[currentLevelIndex].goal.x) completeLevel();
+            if (player.y > canvas.height) endGame();
+
+            cameraX = player.x - 200;
+            if (cameraX < 0) cameraX = 0;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            drawBackground();
+            ctx.translate(-cameraX, 0);
+            const levelTheme = levels[currentLevelIndex].theme;
+            platforms.forEach(p => drawPlatform(p, levelTheme));
+            enemies.forEach(drawSaibaman);
+            dragonballs.forEach(drawDragonball);
+            drawGoal(levels[currentLevelIndex].goal);
+            drawGoku(player);
+            ctx.restore();
+            
+            scoreEl.textContent = score;
+            dragonballsEl.textContent = `${dragonballsCollected}/7`;
+            worldEl.textContent = `1-${currentLevelIndex + 1}`;
+        }
+
+        function gameLoop() {
+            if(!gameRunning) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        const levels = [
+            { theme: 'desert', platforms: [ {x: 0, y: groundY, width: 800, height: 80}, {x: 900, y: 450, width: 200, height: 70}, {x: 1200, y: 400, width: 150, height: 120}, {x: 1500, y: 480, width: 250, height: 40}, {x: 1850, y: 420, width: 100, height: 100}, {x: 2000, y: 350, width: 100, height: 170}, {x: 2150, y: 280, width: 100, height: 240}, {x: 2400, y: groundY, width: 600, height: 80} ], enemies: [ {x: 600, startX: 600, range: 150}, {x: 1550, startX: 1550, range: 150}, {x: 2500, startX: 2500, range: 200} ], dragonballs: [ {x: 950, y: 410}, {x: 1250, y: 360}, {x: 1650, y: 440}, {x: 1900, y: 380}, {x: 2200, y: 240}, {x: 2700, y: 480}, {x: 300, y: 480} ], goal: {x: 2900, y: groundY - 150} },
+            { theme: 'ice', platforms: [ {x: 0, y: groundY, width: 600, height: 80}, {x: 750, y: 450, width: 150, height: 70}, {x: 1000, y: 400, width: 150, height: 120}, {x: 1200, y: 350, width: 150, height: 170}, {x: 1500, y: 480, width: 300, height: 40}, {x: 1900, y: 400, width: 200, height: 120}, {x: 2200, y: 300, width: 200, height: 220}, {x: 2500, y: groundY, width: 600, height: 80} ], enemies: [ {x: 400, startX: 400, range: 150}, {x: 1600, startX: 1600, range: 150}, {x: 2600, startX: 2600, range: 200} ], dragonballs: [ {x: 800, y: 410}, {x: 1250, y: 310}, {x: 1550, y: 440}, {x: 1950, y: 360}, {x: 2250, y: 260}, {x: 2800, y: 480}, {x: 100, y: 480} ], goal: {x: 3000, y: groundY - 150} },
+            { theme: 'namek', platforms: [ {x: 0, y: groundY, width: 400, height: 80}, {x: 500, y: 450, width: 150, height: 70}, {x: 700, y: 400, width: 150, height: 120}, {x: 900, y: 350, width: 150, height: 170}, {x: 1100, y: 400, width: 150, height: 120}, {x: 1300, y: 450, width: 150, height: 70}, {x: 1500, y: groundY, width: 400, height: 80}, {x: 2000, y: 420, width: 200, height: 100}, {x: 2300, y: 350, width: 200, height: 170}, {x: 2600, y: groundY, width: 800, height: 80} ], enemies: [ {x: 600, startX: 500, range: 150}, {x: 1600, startX: 1600, range: 200}, {x: 2700, startX: 2700, range: 300} ], dragonballs: [ {x: 150, y: 480}, {x: 600, y: 360}, {x: 950, y: 310}, {x: 1650, y: 480}, {x: 2050, y: 380}, {x: 2350, y: 310}, {x: 3000, y: 480} ], goal: {x: 3300, y: groundY - 150} }
+        ];
+
+        function initLevel(levelIndex) {
+            const levelData = levels[levelIndex];
+            player = { x: 100, y: 400, width: 40, height: 50, dx: 0, dy: 0, speed: 6, jumpPower: -18, onGround: false, canJump: false, direction: 1 };
+            platforms.splice(0, platforms.length, ...levelData.platforms);
+            enemies.splice(0, enemies.length);
+            levelData.enemies.forEach(e => enemies.push({...e, y: groundY - 40, width: 30, height: 40, dx: -1}));
+            dragonballs.splice(0, dragonballs.length, ...levelData.dragonballs);
+            cameraX = 0;
+        }
+
+        function handleModalClick() {
+            if (nextAction === 'start_game' || nextAction === 'restart') {
+                startGameFlow();
+            } else if (nextAction === 'next_level') {
+                initLevel(currentLevelIndex);
+                gameRunning = true;
+                modal.style.display = 'none';
+                gameLoop();
+            }
+        }
+        
+        function startGameFlow() {
+            currentLevelIndex = 0;
+            score = 0;
+            dragonballsCollected = 0;
+            initLevel(currentLevelIndex);
+            gameOver = false;
+            gameRunning = true;
+            modal.style.display = 'none';
+            gameLoop();
+        }
+
+        function completeLevel() {
+            gameRunning = false;
+            currentLevelIndex++;
+            if (currentLevelIndex >= levels.length) {
+                winGame();
+            } else {
+                modalTitleEl.textContent = `FASE 1-${currentLevelIndex} COMPLETA!`;
+                modalTextEl.innerHTML = `SCORE: ${score}<br>Prepare-se para o próximo mundo!`;
+                startButton.textContent = `IR PARA MUNDO 1-${currentLevelIndex + 1}`;
+                modal.style.display = 'flex';
+                nextAction = 'next_level';
+            }
+        }
+
+        function endGame(won = false) {
+            gameOver = true;
+            gameRunning = false;
+            modal.style.display = 'flex';
+            modalTitleEl.textContent = won ? "VOCÊ VENCEU!" : "FIM DE JOGO";
+            modalTextEl.textContent = `SCORE FINAL: ${score}`;
+            startButton.textContent = 'JOGAR NOVAMENTE';
+            nextAction = 'restart';
+        }
+
+        function winGame() { endGame(true); }
+
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
+        startButton.addEventListener('click', handleModalClick);
+
+        const touchLeft = document.getElementById('touch-left');
+        const touchRight = document.getElementById('touch-right');
+        const touchJump = document.getElementById('touch-jump');
+        const handleTouch = (key, value) => (e) => { e.preventDefault(); keys[key] = value; };
+        touchLeft.addEventListener('touchstart', handleTouch('ArrowLeft', true));
+        touchLeft.addEventListener('touchend', handleTouch('ArrowLeft', false));
+        touchRight.addEventListener('touchstart', handleTouch('ArrowRight', true));
+        touchRight.addEventListener('touchend', handleTouch('ArrowRight', false));
+        touchJump.addEventListener('touchstart', handleTouch('ArrowUp', true));
+        touchJump.addEventListener('touchend', handleTouch('ArrowUp', false));
+        
+        drawBackground();
+        drawPlatform({x: 0, y: groundY, width: 800, height: 80}, levels[0].theme);
+    </script>
+</body>
+</html>
