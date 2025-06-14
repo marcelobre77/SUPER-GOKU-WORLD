@@ -76,9 +76,10 @@
             justify-content: space-between;
             padding: 0 20px;
             box-sizing: border-box;
-            opacity: 0.6;
+            opacity: 0.7;
         }
         .touch-controls .d-pad { display: flex; gap: 10px; }
+        .touch-controls .action-buttons { display: flex; gap: 10px; }
         .touch-controls button {
             width: 70px;
             height: 70px;
@@ -118,7 +119,10 @@
             <button id="touch-left">◄</button>
             <button id="touch-right">►</button>
         </div>
-        <button id="touch-jump" style="background: #2563eb;">A</button>
+        <div class="action-buttons">
+            <button id="touch-fire" style="background: #ef4444;">B</button>
+            <button id="touch-jump" style="background: #2563eb;">A</button>
+        </div>
     </div>
 
     <script>
@@ -153,7 +157,7 @@
         const startButton = document.getElementById('start-button');
 
         // --- Game State ---
-        let score, dragonballsCollected, gameOver, gameRunning, cameraX;
+        let score, dragonballsCollected, levelDragonballs, gameOver, gameRunning, cameraX;
         let currentLevelIndex = 0;
         let nextAction = 'start_game';
         
@@ -161,37 +165,91 @@
         const gravity = 0.7;
         const groundY = 520;
         let player;
-        const enemies = [], dragonballs = [], platforms = [];
+        const enemies = [], dragonballs = [], platforms = [], fireballs = [];
 
         // --- Controls ---
         const keys = {};
         
         // --- Drawing Functions ---
-        function drawGoku(p) { ctx.save(); ctx.translate(p.x, p.y); if (p.direction === -1) { ctx.scale(-1, 1); ctx.translate(-p.width, 0); } ctx.fillStyle = '#1e3a8a'; ctx.fillRect(5, 40, 12, 10); ctx.fillRect(23, 40, 12, 10); ctx.fillStyle = '#f97316'; ctx.fillRect(0, 25, 40, 15); ctx.fillStyle = '#1d4ed8'; ctx.fillRect(0, 12, 40, 13); ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(20, 20); ctx.lineTo(40, 12); ctx.lineTo(35, 25); ctx.lineTo(5, 25); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#fcd34d'; ctx.beginPath(); ctx.arc(20, 7, 12, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(5, -15); ctx.lineTo(20, -5); ctx.lineTo(20, -20); ctx.lineTo(35, -15); ctx.lineTo(40, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+        function drawGoku(p) {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            if (p.direction === -1) {
+                ctx.scale(-1, 1);
+                ctx.translate(-p.width, 0);
+            }
+            // Aura Super Saiyajin
+            if (p.isSuperSaiyan) {
+                const auraSize = p.isSuperSaiyan3 ? Math.random() * 8 + 30 : Math.random() * 5 + 25;
+                ctx.fillStyle = `rgba(253, 224, 71, ${Math.random() * 0.4 + 0.3})`;
+                ctx.beginPath();
+                ctx.arc(p.width / 2, p.height / 2, auraSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Cabelo SSJ3 (desenhado primeiro para ficar atrás do corpo)
+            if (p.isSuperSaiyan3) {
+                ctx.fillStyle = '#fde047'; // Amarelo um pouco mais claro para o cabelo longo
+                ctx.beginPath();
+                ctx.moveTo(15, 10);
+                ctx.bezierCurveTo(-20, 30, -10, 50, 5, 45);
+                ctx.bezierCurveTo(20, 55, 30, 30, 25, 10);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Pés
+            ctx.fillStyle = '#1e3a8a'; ctx.fillRect(5, 40, 12, 10); ctx.fillRect(23, 40, 12, 10);
+            // Calça
+            ctx.fillStyle = '#f97316'; ctx.fillRect(0, 25, 40, 15);
+            // Corpo
+            ctx.fillStyle = '#1d4ed8'; ctx.fillRect(0, 12, 40, 13);
+            ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(20, 20); ctx.lineTo(40, 12); ctx.lineTo(35, 25); ctx.lineTo(5, 25); ctx.closePath(); ctx.fill();
+            // Cabeça
+            ctx.fillStyle = '#fcd34d'; ctx.beginPath(); ctx.arc(20, 7, 12, 0, Math.PI * 2); ctx.fill();
+            
+            // Cabelo
+            const hairColor = p.isSuperSaiyan ? '#facc15' : '#111827';
+            ctx.fillStyle = hairColor;
+            
+            if (p.isSuperSaiyan3) {
+                 // Franja SSJ3
+                ctx.beginPath();
+                ctx.moveTo(32, 2);
+                ctx.quadraticCurveTo(20, -25, 8, 2);
+                ctx.quadraticCurveTo(20, 10, 32, 2);
+                ctx.fill();
+            } else {
+                 // Cabelo normal ou SSJ1
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(5, -15); ctx.lineTo(20, -5); ctx.lineTo(20, -20); ctx.lineTo(35, -15); ctx.lineTo(40, 0); ctx.closePath(); ctx.fill();
+            }
+            ctx.restore();
+        }
+
         function drawSaibaman(e) { ctx.fillStyle = '#16a34a'; ctx.fillRect(e.x, e.y + 10, 30, 30); ctx.beginPath(); ctx.arc(e.x + 15, e.y + 5, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(e.x + 15, e.y + 5, 5, 0, Math.PI * 2); ctx.fill(); }
-        function drawDragonball(d) { ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(d.x + 15, d.y + 15, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#dc2626'; ctx.font = "bold 18px 'Press Start 2P'"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("★", d.x + 15, d.y + 15); }
+        function drawDragonball(d) { ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(d.x + 15, d.y + 15, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#dc2626'; ctx.font = "bold 18px 'Press Start 2P'"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("★", d.x + 15, d.y + 15); }
         function drawGoal(g) { ctx.fillStyle = '#94a3b8'; ctx.fillRect(g.x, g.y, 10, 150); ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(g.x + 5, g.y - 30, 40, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#64748b'; ctx.fillRect(g.x-35, g.y-10, 80, 20); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(g.x+5, g.y-30, 20, 0, Math.PI*2); ctx.fill(); }
+        
+        function drawFireball(f) {
+            // Efeito flamejante
+            const outerRadius = 12;
+            const innerRadius = 5;
+            ctx.fillStyle = 'rgba(251, 146, 60, 0.8)'; // Laranja
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, outerRadius + Math.random() * 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fde047'; // Amarelo
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, innerRadius + Math.random() * 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         function drawPlatform(p, theme) {
             let topColor, bottomColor;
             switch(theme) {
-                case 'ice':
-                    topColor = '#ffffff'; bottomColor = '#60a5fa';
-                    ctx.fillStyle = bottomColor;
-                    ctx.fillRect(p.x, p.y, p.width, p.height);
-                    ctx.fillStyle = topColor;
-                    ctx.fillRect(p.x, p.y, p.width, 15);
-                    break;
-                case 'namek':
-                    topColor = '#4ade80'; bottomColor = '#166534';
-                    ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20);
-                    ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20);
-                    break;
-                default:
-                    topColor = '#fde047'; bottomColor = '#ca8a04';
-                    ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20);
-                    ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20);
-                    break;
+                case 'ice': topColor = '#ffffff'; bottomColor = '#60a5fa'; ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y, p.width, p.height); ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 15); break;
+                case 'namek': topColor = '#4ade80'; bottomColor = '#166534'; ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20); ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20); break;
+                default: topColor = '#fde047'; bottomColor = '#ca8a04'; ctx.fillStyle = topColor; ctx.fillRect(p.x, p.y, p.width, 20); ctx.fillStyle = bottomColor; ctx.fillRect(p.x, p.y + 20, p.width, p.height - 20); break;
             }
         }
 
@@ -199,18 +257,9 @@
             const levelTheme = levels[currentLevelIndex].theme;
             let skyGradient;
             switch(levelTheme) {
-                case 'ice':
-                    skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    skyGradient.addColorStop(0, '#4f46e5'); skyGradient.addColorStop(1, '#a5b4fc');
-                    break;
-                case 'namek':
-                     skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    skyGradient.addColorStop(0, '#065f46'); skyGradient.addColorStop(1, '#34d399');
-                    break;
-                default:
-                    skyGradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    skyGradient.addColorStop(0, '#2563eb'); skyGradient.addColorStop(1, '#60a5fa');
-                    break;
+                case 'ice': skyGradient = ctx.createLinearGradient(0, 0, 0, 400); skyGradient.addColorStop(0, '#4f46e5'); skyGradient.addColorStop(1, '#a5b4fc'); break;
+                case 'namek': skyGradient = ctx.createLinearGradient(0, 0, 0, 400); skyGradient.addColorStop(0, '#065f46'); skyGradient.addColorStop(1, '#34d399'); break;
+                default: skyGradient = ctx.createLinearGradient(0, 0, 0, 400); skyGradient.addColorStop(0, '#2563eb'); skyGradient.addColorStop(1, '#60a5fa'); break;
             }
             ctx.fillStyle = skyGradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -241,13 +290,22 @@
             player.y += player.dy;
             player.onGround = false;
 
-            if (keys['ArrowLeft'] || keys['a']) { player.dx = -player.speed; player.direction = -1; } 
-            else if (keys['ArrowRight'] || keys['d']) { player.dx = player.speed; player.direction = 1; }
+            if (keys['arrowleft'] || keys['a']) { player.dx = -player.speed; player.direction = -1; } 
+            else if (keys['arrowright'] || keys['d']) { player.dx = player.speed; player.direction = 1; }
             else { player.dx = 0; }
             
             player.x += player.dx;
             
-            if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && player.canJump) { player.dy = player.jumpPower; player.canJump = false; }
+            if ((keys['arrowup'] || keys['w'] || keys[' ']) && player.canJump) { player.dy = player.jumpPower; player.canJump = false; }
+            if (player.fireCooldown > 0) player.fireCooldown--;
+            if (keys['x'] && player.isSuperSaiyan && player.fireCooldown === 0) {
+                fireballs.push({
+                    x: player.x + (player.direction === 1 ? player.width : 0),
+                    y: player.y + player.height / 2,
+                    direction: player.direction
+                });
+                player.fireCooldown = 30; // Cooldown
+            }
 
             platforms.forEach(p => {
                 if (player.x + player.width > p.x && player.x < p.x + p.width &&
@@ -274,11 +332,31 @@
                 }
             });
             
+            fireballs.forEach((f, fireIndex) => {
+                f.x += 10 * f.direction;
+                if(f.x < cameraX || f.x > cameraX + canvas.width) fireballs.splice(fireIndex, 1);
+
+                enemies.forEach((e, enemyIndex) => {
+                    if (f.x < e.x + e.width && f.x + 10 > e.x && f.y < e.y + e.height && f.y + 10 > e.y) {
+                        fireballs.splice(fireIndex, 1);
+                        enemies.splice(enemyIndex, 1);
+                        score += 100;
+                    }
+                });
+            });
+            
             dragonballs.forEach((d, i) => {
                 if (player.x < d.x + 30 && player.x + player.width > d.x && player.y < d.y + 30 && player.y + player.height > d.y) {
                     dragonballs.splice(i, 1);
                     dragonballsCollected++;
+                    levelDragonballs++;
                     score += 500;
+                    if (levelDragonballs === 3) {
+                        player.isSuperSaiyan = true;
+                    }
+                    if (levelDragonballs === 5) {
+                        player.isSuperSaiyan3 = true;
+                    }
                 }
             });
 
@@ -298,6 +376,7 @@
             platforms.forEach(p => drawPlatform(p, levelTheme));
             enemies.forEach(drawSaibaman);
             dragonballs.forEach(drawDragonball);
+            fireballs.forEach(drawFireball);
             drawGoal(levels[currentLevelIndex].goal);
             drawGoku(player);
             ctx.restore();
@@ -322,12 +401,14 @@
 
         function initLevel(levelIndex) {
             const levelData = levels[levelIndex];
-            player = { x: 100, y: 400, width: 40, height: 50, dx: 0, dy: 0, speed: 6, jumpPower: -18, onGround: false, canJump: false, direction: 1 };
+            player = { x: 100, y: 400, width: 40, height: 50, dx: 0, dy: 0, speed: 6, jumpPower: -18, onGround: false, canJump: false, direction: 1, isSuperSaiyan: false, isSuperSaiyan3: false, fireCooldown: 0 };
             platforms.splice(0, platforms.length, ...levelData.platforms);
             enemies.splice(0, enemies.length);
             levelData.enemies.forEach(e => enemies.push({...e, y: groundY - 40, width: 30, height: 40, dx: -1}));
             dragonballs.splice(0, dragonballs.length, ...levelData.dragonballs);
+            fireballs.splice(0, fireballs.length);
             cameraX = 0;
+            levelDragonballs = 0;
         }
 
         function handleModalClick() {
@@ -378,21 +459,30 @@
 
         function winGame() { endGame(true); }
 
-        window.addEventListener('keydown', e => keys[e.key] = true);
-        window.addEventListener('keyup', e => keys[e.key] = false);
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
         startButton.addEventListener('click', handleModalClick);
 
         const touchLeft = document.getElementById('touch-left');
         const touchRight = document.getElementById('touch-right');
         const touchJump = document.getElementById('touch-jump');
+        const touchFire = document.getElementById('touch-fire');
+
         const handleTouch = (key, value) => (e) => { e.preventDefault(); keys[key] = value; };
-        touchLeft.addEventListener('touchstart', handleTouch('ArrowLeft', true));
-        touchLeft.addEventListener('touchend', handleTouch('ArrowLeft', false));
-        touchRight.addEventListener('touchstart', handleTouch('ArrowRight', true));
-        touchRight.addEventListener('touchend', handleTouch('ArrowRight', false));
-        touchJump.addEventListener('touchstart', handleTouch('ArrowUp', true));
-        touchJump.addEventListener('touchend', handleTouch('ArrowUp', false));
         
+        touchLeft.addEventListener('touchstart', handleTouch('arrowleft', true));
+        touchLeft.addEventListener('touchend', handleTouch('arrowleft', false));
+        
+        touchRight.addEventListener('touchstart', handleTouch('arrowright', true));
+        touchRight.addEventListener('touchend', handleTouch('arrowright', false));
+
+        touchJump.addEventListener('touchstart', handleTouch(' ', true));
+        touchJump.addEventListener('touchend', handleTouch(' ', false));
+        
+        touchFire.addEventListener('touchstart', handleTouch('x', true));
+        touchFire.addEventListener('touchend', handleTouch('x', false));
+        
+        // Initial Render
         drawBackground();
         drawPlatform({x: 0, y: groundY, width: 800, height: 80}, levels[0].theme);
     </script>
